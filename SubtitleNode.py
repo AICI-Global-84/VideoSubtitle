@@ -5,68 +5,64 @@ import torch
 from moviepy.editor import VideoFileClip
 
 class SubtitleNode:
-    def __init__(self):
-        super().__init__()
-        
-        # Add inputs for video file, subtitle params, and font settings
-        self.add_input('video_file', label="Video File", type="file")
-        self.add_input('font_name', label="Font Name", type="text", default_value="Arial")
-        self.add_input('font_size', label="Font Size", type="number", default_value=24)
-        self.add_input('font_color', label="Font Color", type="color", default_value="#FFFFFF")
-        self.add_input('subtitle_position', label="Subtitle Position", type="text", default_value="bottom")
-        self.add_input('subtitle_style', label="Subtitle Style", type="text", default_value="normal")
-        self.add_input('translate_to_english', label="Translate to English", type="boolean", default_value=False)
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video_file": ("STRING", {"default": ""}),
+                "font_name": ("STRING", {"default": "Arial"}),
+                "font_size": ("FLOAT", {"default": 24}),
+                "font_color": ("STRING", {"default": "FFFFFF"}),  # Màu ở dạng hex, bỏ đi dấu '#'
+                "subtitle_position": ("STRING", {"default": "bottom"}),
+                "subtitle_style": ("STRING", {"default": "normal"}),
+                "translate_to_english": ("BOOLEAN", {"default": False})
+            }
+        }
 
-        # Output: processed video with embedded subtitles
-        self.add_output('output_video', label="Output Video")
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "process"
 
-    def process(self):
-        # Fetch input parameters
-        video_file_path = self.get_input('video_file')
-        font_name = self.get_input('font_name')
-        font_size = self.get_input('font_size')
-        font_color = self.get_input('font_color')
-        subtitle_position = self.get_input('subtitle_position')
-        subtitle_style = self.get_input('subtitle_style')
-        translate_to_english = self.get_input('translate_to_english')
-
+    def process(self, video_file, font_name, font_size, font_color, subtitle_position, subtitle_style, translate_to_english):
         # Extract audio from video and generate subtitles
-        extracted_audio_name = extract_audio(video_file_path)
+        extracted_audio_name = self.extract_audio(video_file)
         params_dict = {
             "translate_to_english": translate_to_english,
-            "is_upper": False,  # Allow user to control this via another input if needed
-            "video_quality_key": "high",
+            "is_upper": False,
             "eng_font": font_name,
+            "font_size": font_size,
+            "font_color": font_color,
             "subtitle_position": subtitle_position,
             "subtitle_style": subtitle_style
         }
 
-        transcript_text = generate_transcript_matrix(extracted_audio_name, params_dict)
-        vtt_path, srt_path = convert_transcript_to_subtitles(transcript_text, extracted_audio_name, params_dict)
+        # Tạo transcript từ audio
+        transcript_text = self.generate_transcript_matrix(extracted_audio_name, params_dict)
 
-        # Embed subtitles into video
-        output_video = embed_subtitles(video_file_path, extracted_audio_name, params_dict)
+        # Chuyển transcript thành file subtitle (.vtt)
+        vtt_path = self.convert_transcript_to_subtitles(transcript_text, extracted_audio_name, params_dict)
 
-        # Set the output to the resulting video
-        self.set_output('output_video', output_video)
+        # Chèn subtitle vào video
+        output_video = self.embed_subtitles(video_file, extracted_audio_name, params_dict)
 
-    def extract_audio(video_file_path):
+        # Trả về đường dẫn tới video đã chèn subtitle
+        return (output_video,)
+
+    def extract_audio(self, video_file_path):
         file_name_with_ext = os.path.basename(video_file_path)
-        file_name = generate_unique_file_name(file_name_with_ext.split('.')[0])
-    
+        file_name = self.generate_unique_file_name(file_name_with_ext.split('.')[0])
         curr_audio_dir = f'{AUDIO_DIR}/{file_name}'
         os.makedirs(curr_audio_dir, exist_ok=True)
         audio_file_name = f'{file_name}.wav'
         audio_file_path = f'{curr_audio_dir}/{audio_file_name}'
-    
+
         video_clip = VideoFileClip(video_file_path)
         audio_clip = video_clip.audio
         audio_clip.write_audiofile(audio_file_path)
         video_clip.close()
-    
+
         return file_name
 
-    def generate_transcript_matrix(file_name, params_dict):
+    def generate_transcript_matrix(self, file_name, params_dict):
         curr_audio_dir = f'{AUDIO_DIR}/{file_name}'
         audio_file_name = f'{file_name}.wav'
         audio_file_path = f'{curr_audio_dir}/{audio_file_name}'
@@ -92,24 +88,24 @@ class SubtitleNode:
             current_row = []
             for j in range(len(words)):
                 word_instance = {
-                    "start_time": int(words[j]["start"]*1000),
-                    "end_time": int(words[j]["end"]*1000),
-                    "word": words[j]["word"][1:]
+                    "start_time": int(words[j]["start"] * 1000),
+                    "end_time": int(words[j]["end"] * 1000),
+                    "word": words[j]["word"]
                 }
                 current_row.append(word_instance)
             transcript_matrix.append(current_row)
     
         return transcript_matrix
 
-    def convert_transcript_to_subtitles(transcript_matrix, file_name, params_dict):
-        # Tạo phụ đề từ transcript_matrix dưới dạng `.vtt` và `.srt`
+    def convert_transcript_to_subtitles(self, transcript_matrix, file_name, params_dict):
+        # Tạo phụ đề từ transcript_matrix dưới dạng `.vtt`
         lines = ["WEBVTT\n"]
         for i in range(len(transcript_matrix)):
             for j in range(len(transcript_matrix[i])):
                 word = transcript_matrix[i][j]["word"]
                 start_time = transcript_matrix[i][j]["start_time"]
                 end_time = transcript_matrix[i][j]["end_time"]
-                lines.append(f"{convert_time_for_vtt_and_srt(start_time, '.vtt')} --> {convert_time_for_vtt_and_srt(end_time, '.vtt')}\n{word}\n")
+                lines.append(f"{self.convert_time_for_vtt_and_srt(start_time)} --> {self.convert_time_for_vtt_and_srt(end_time)}\n{word}\n")
     
         vtt_text = "\n".join(lines)
         curr_subtitles_dir = f'{SUBTITLES_DIR}/{file_name}'
@@ -121,17 +117,19 @@ class SubtitleNode:
         
         return vtt_subtitle_path
 
-    def embed_subtitles(video_file_path, file_name, params_dict):
+    def embed_subtitles(self, video_file_path, file_name, params_dict):
         curr_subtitles_dir = f"{SUBTITLES_DIR}/{file_name}"
         subtitles_path = f"{curr_subtitles_dir}/{file_name}.vtt"
         
         output_video_path = f"{TMP_OUTPUT_DIR}/{file_name}_output.mp4"
         font_name = params_dict["eng_font"]
+        font_size = params_dict["font_size"]
+        font_color = params_dict["font_color"]
         
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', video_file_path,
-            "-vf", f"subtitles={subtitles_path}:force_style='Fontname={font_name},Fontsize={params_dict['font_size']},PrimaryColour=&H{params_dict['font_color']}'",
+            "-vf", f"subtitles={subtitles_path}:force_style='Fontname={font_name},Fontsize={font_size},PrimaryColour=&H{font_color}&'",
             '-c:a', 'copy',
             '-c:v', 'libx264',
             '-y',  # Overwrite output
@@ -140,6 +138,13 @@ class SubtitleNode:
     
         subprocess.run(ffmpeg_cmd)
         return output_video_path
+
+    def convert_time_for_vtt_and_srt(self, ms):
+        seconds = ms // 1000
+        milliseconds = ms % 1000
+        minutes = seconds // 60
+        hours = minutes // 60
+        return f"{hours:02}:{minutes%60:02}:{seconds%60:02}.{milliseconds:03}"
 
 # A dictionary that contains all nodes you want to export with their names
 NODE_CLASS_MAPPINGS = {
