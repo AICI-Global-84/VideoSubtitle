@@ -61,7 +61,12 @@ class SubtitleNode:
         video_clip.close()
 
         return file_name
-
+        
+    def generate_unique_file_name(self, base_name):
+        # Tạo tên file duy nhất bằng cách thêm timestamp
+        timestamp = int(time.time())
+        return f"{base_name}_{timestamp}"
+    
     def generate_transcript_matrix(self, file_name, params_dict):
         curr_audio_dir = f'{AUDIO_DIR}/{file_name}'
         audio_file_name = f'{file_name}.wav'
