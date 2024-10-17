@@ -3,6 +3,7 @@ import subprocess
 import whisper
 import torch
 from moviepy.editor import VideoFileClip
+import time
 
 class SubtitleNode:
     @classmethod
